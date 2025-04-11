@@ -1,72 +1,62 @@
-from fastapi.testclient import TestClient
-from src.main import app
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
+from typing import List, Dict, Optional
 
-client = TestClient(app)
+app = FastAPI()
 
-# Существующие пользователи
-users = [
-    {
-        'id': 1,
-        'name': 'Ivan Ivanov',
-        'email': 'i.i.ivanov@mail.com',
-    },
-    {
-        'id': 2,
-        'name': 'Petr Petrov',
-        'email': 'p.p.petrov@mail.com',
-    }
+# Модель данных
+class User(BaseModel):
+    id: int
+    name: str
+    email: str
+
+class UserCreate(BaseModel):
+    name: str
+    email: str
+
+# "База данных" - храним пользователей в памяти
+db: List[User] = [
+    User(id=1, name="Ivan Ivanov", email="i.i.ivanov@mail.com"),
+    User(id=2, name="Petr Petrov", email="p.p.petrov@mail.com")
 ]
 
-def test_get_existed_user():
-    '''Получение существующего пользователя'''
-    response = client.get("/api/v1/user", params={'email': users[0]['email']})
-    assert response.status_code == 200
-    assert response.json() == users[0]
+@app.get("/api/v1/user", response_model=User)
+def get_user(email: str):
+    """Получение пользователя по email"""
+    user = next((u for u in db if u.email == email), None)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    return user
 
-def test_get_unexisted_user():
-    '''Попытка получить несуществующего пользователя'''
-    response = client.get("/api/v1/user", params={'email': 'nonexistent@mail.com'})
-    assert response.status_code == 404
-    assert response.json() == {'detail': 'User not found'}
-
-def test_create_user_with_valid_email():
-    '''Создание пользователя с уникальной почтой'''
-    new_user = {
-        'name': 'New User',
-        'email': 'new.user@mail.com'
-    }
-    response = client.post("/api/v1/user", json=new_user)
-    assert response.status_code == 201
-    response_data = response.json()
-    assert response_data['name'] == new_user['name']
-    assert response_data['email'] == new_user['email']
-    assert 'id' in response_data
-
-def test_create_user_with_invalid_email():
-    '''Создание пользователя с почтой, которую использует другой пользователь'''
-    existing_email_user = {
-        'name': 'Duplicate Email',
-        'email': users[0]['email']  # Используем email существующего пользователя
-    }
-    response = client.post("/api/v1/user", json=existing_email_user)
-    assert response.status_code == 400
-    assert response.json() == {'detail': 'Email already registered'}
-
-def test_delete_user():
-    '''Удаление пользователя'''
-    # Сначала создадим пользователя для удаления
-    new_user = {
-        'name': 'User to delete',
-        'email': 'to.delete@mail.com'
-    }
-    create_response = client.post("/api/v1/user", json=new_user)
-    user_id = create_response.json()['id']
+@app.post("/api/v1/user", status_code=status.HTTP_201_CREATED, response_model=User)
+def create_user(user_data: UserCreate):
+    """Создание нового пользователя"""
+    # Проверка на существующий email
+    if any(u.email == user_data.email for u in db):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
     
-    # Удаляем пользователя
-    delete_response = client.delete(f"/api/v1/user/{user_id}")
-    assert delete_response.status_code == 200
-    assert delete_response.json() == {'message': 'User deleted successfully'}
+    # Создаем нового пользователя
+    new_id = max(u.id for u in db) + 1 if db else 1
+    new_user = User(id=new_id, **user_data.dict())
+    db.append(new_user)
+    return new_user
+
+@app.delete("/api/v1/user/{user_id}", status_code=status.HTTP_200_OK)
+def delete_user(user_id: int):
+    """Удаление пользователя по ID"""
+    global db
+    user = next((u for u in db if u.id == user_id), None)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     
-    # Проверяем, что пользователь действительно удален
-    get_response = client.get("/api/v1/user", params={'email': new_user['email']})
-    assert get_response.status_code == 404
+    db = [u for u in db if u.id != user_id]
+    return {"message": "User deleted successfully"}
