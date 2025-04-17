@@ -19,12 +19,15 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pytest httpx
-        pip install -r requirements.txt  # Если используете requirements.txt
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         
-    - name: Install project in editable mode
+    - name: Debug project structure
       run: |
-        pip install -e .
+        echo "Содержимое папки tests/:"
+        ls -l tests/
+        echo "Содержимое файла test_user.py:"
+        cat tests/test_user.py
         
     - name: Run tests with PYTHONPATH
       run: |
-        PYTHONPATH=$PYTHONPATH:. pytest tests/test_user.py -v
+        PYTHONPATH=$PYTHONPATH:. pytest $(pwd)/tests/test_user.py -v
