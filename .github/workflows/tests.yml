@@ -30,4 +30,4 @@ jobs:
         
     - name: Run tests with PYTHONPATH
       run: |
-        PYTHONPATH=$PYTHONPATH:. pytest $(pwd)/tests/test_user.py -v
+        PYTHONPATH=$PYTHONPATH:. pytest $(pwd)/tests/test_*.py -v
